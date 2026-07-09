@@ -1,0 +1,1 @@
+"""ResumeAtlas Backend Application."""
