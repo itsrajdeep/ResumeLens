@@ -36,11 +36,19 @@ def trigger_crawl(
 
 
 def _run_sync(subreddit: str):
-    """Background task wrapper — gets its own DB session."""
+    """Background task wrapper — gets its own DB session. Auto-runs pipeline on new resumes."""
     from app.database import SessionLocal
+    from app.pipeline.pipeline import process_resume
+
     db = SessionLocal()
     try:
-        sync_subreddit(db, subreddit)
+        summary = sync_subreddit(db, subreddit)
+        # Process newly downloaded resumes
+        for resume_id in summary.get("pending_pipeline", []):
+            try:
+                process_resume(db, resume_id)
+            except Exception as exc:
+                logger.error("Pipeline failed for resume %d: %s", resume_id, exc)
     except Exception as exc:
         logger.error("Sync failed for r/%s: %s", subreddit, exc)
     finally:

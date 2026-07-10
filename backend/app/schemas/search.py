@@ -1,23 +1,15 @@
 """ResumeAtlas Pydantic Schemas — Search."""
-from typing import Any, Optional
-from pydantic import BaseModel, Field
-
-
-class SearchQuery(BaseModel):
-    q: str = Field(..., min_length=1, max_length=500, description="Search query")
-    category: Optional[str] = None
-    skills: Optional[list[str]] = None
-    page: int = Field(default=1, ge=1)
-    page_size: int = Field(default=20, ge=1, le=100)
+from typing import Optional
+from pydantic import BaseModel
 
 
 class SearchResult(BaseModel):
     id: int
-    post_id: int
-    category: Optional[str]
-    summary: Optional[str]
+    post_id: Optional[int] = None
+    category: Optional[str] = None
+    summary: Optional[str] = None
     skills: list[str] = []
-    score: float = 0.0  # relevance score
+    score: float = 0.0
 
 
 class SearchResponse(BaseModel):

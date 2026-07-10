@@ -43,12 +43,13 @@ def download_resume(
     subreddit: str,
     file_type: str,
     db: Session,
-) -> tuple[str, bool]:
+) -> tuple[str, str, bool]:
     """
     Download a resume file and persist it to disk.
 
     Returns:
-        (file_path, is_new): absolute path on disk, and whether this was a new file.
+        (file_path, file_hash, is_new): absolute path on disk, SHA256 hash, and
+        whether this was a new file (False means duplicate, existing path returned).
 
     Raises:
         ValueError: if the file is too large or content-type is unexpected.
@@ -79,9 +80,9 @@ def download_resume(
     if existing:
         tmp_path.unlink(missing_ok=True)
         logger.debug("Duplicate file skipped (hash=%s)", file_hash[:12])
-        return existing.raw_file_path, False
+        return existing.raw_file_path, file_hash, False
 
     dest = raw_root / f"{file_hash}.{file_type}"
     shutil.move(str(tmp_path), dest)
     logger.info("Downloaded %s → %s", url, dest)
-    return str(dest), True
+    return str(dest), file_hash, True

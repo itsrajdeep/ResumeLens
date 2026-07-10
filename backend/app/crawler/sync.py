@@ -38,6 +38,7 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
     state = _get_or_create_sync_state(db, subreddit)
     new_posts = skipped = errors = 0
     newest_fullname: str | None = None
+    _pending_resume_ids: list[int] = []
 
     for post in iter_subreddit_posts(subreddit, limit=limit):
         fullname = f"t3_{post['id']}"
@@ -65,11 +66,19 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
 
             if data["file_url"] and data["file_type"]:
                 try:
-                    file_path, is_new = download_resume(
+                    file_path, file_hash, is_new = download_resume(
                         data["file_url"], subreddit, data["file_type"], db
                     )
                     if is_new:
-                        db.add(Resume(post_id=db_post.id, raw_file_path=file_path))
+                        new_resume = Resume(
+                            post_id=db_post.id,
+                            raw_file_path=file_path,
+                            file_hash=file_hash,
+                        )
+                        db.add(new_resume)
+                        db.flush()
+                        # Trigger pipeline in background after commit
+                        _pending_resume_ids.append(new_resume.id)
                 except Exception as dl_err:
                     logger.warning("Download failed for %s: %s", data["file_url"], dl_err)
 
@@ -89,6 +98,12 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
     state.total_posts_synced = (state.total_posts_synced or 0) + new_posts
     db.commit()
 
-    summary = {"subreddit": subreddit, "new_posts": new_posts, "skipped": skipped, "errors": errors}
+    summary = {
+        "subreddit": subreddit,
+        "new_posts": new_posts,
+        "skipped": skipped,
+        "errors": errors,
+        "pending_pipeline": _pending_resume_ids,
+    }
     logger.info("Sync complete: %s", summary)
     return summary

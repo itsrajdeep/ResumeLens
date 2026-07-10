@@ -2,13 +2,13 @@
 Resume endpoints — list, get, filter.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 
 from app.api.deps import get_db
 from app.models.resume import Resume
 from app.models.skill import Skill, ResumeSkill
-from app.schemas.resume import ResumeResponse, ResumeDetail
+from app.schemas.resume import ResumeResponse, ResumeDetail, SkillOut
 
 router = APIRouter()
 
@@ -27,14 +27,6 @@ def list_resumes(
     return q.order_by(Resume.created_at.desc()).offset(offset).limit(page_size).all()
 
 
-@router.get("/{resume_id}", response_model=ResumeDetail)
-def get_resume(resume_id: int, db: Session = Depends(get_db)):
-    resume = db.get(Resume, resume_id)
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    return resume
-
-
 @router.get("/stats/categories")
 def category_stats(db: Session = Depends(get_db)):
     """Return count of resumes per category."""
@@ -51,3 +43,27 @@ def top_skills(limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_d
     """Return top N skills by usage count."""
     rows = db.query(Skill).order_by(Skill.usage_count.desc()).limit(limit).all()
     return [{"name": s.name, "category": s.category, "count": s.usage_count} for s in rows]
+
+
+@router.get("/{resume_id}", response_model=ResumeDetail)
+def get_resume(resume_id: int, db: Session = Depends(get_db)):
+    resume = (
+        db.query(Resume)
+        .options(
+            joinedload(Resume.skills).joinedload(ResumeSkill.skill),
+            joinedload(Resume.projects),
+        )
+        .filter(Resume.id == resume_id)
+        .first()
+    )
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Flatten skills from junction table
+    resume.__dict__["skills"] = [
+        SkillOut(name=rs.skill.name, category=rs.skill.category)
+        for rs in resume.skills
+        if rs.skill
+    ]
+
+    return resume
