@@ -3,7 +3,7 @@ import Link from "next/link";
 const stats = [
   { value: "10K+", label: "Resumes", color: "var(--color-primary)" },
   { value: "800+", label: "Skills", color: "var(--color-primary)" },
-  { value: "AI", label: "Powered Analysis", color: "var(--color-secondary)" },
+  { value: "Data", label: "Driven Analysis", color: "var(--color-secondary)" },
   { value: "15+", label: "Categories", color: "var(--color-primary)" },
 ];
 
@@ -17,7 +17,7 @@ const features = [
   },
   {
     icon: "memory",
-    title: "AI-Powered Analysis",
+    title: "Advanced Data Analysis",
     description: "Extract skills, identify seniority levels, and benchmark against industry standards automatically.",
     accent: "secondary",
     glow: true,
@@ -61,7 +61,7 @@ export default function HomePage() {
                 <span className="gradient-text">Developer Resumes</span>
               </h1>
               <p className="text-lg text-[var(--color-on-surface-variant)] max-w-xl leading-relaxed">
-                Search thousands of anonymized developer resumes collected from Reddit and analyze them using AI.
+                Search thousands of anonymized developer resumes collected from Reddit and analyze them using advanced metrics.
                 Gain insights into real-world tech stacks and career progressions.
               </p>
             </div>
@@ -146,21 +146,21 @@ export default function HomePage() {
                   <span className="px-2 py-1 rounded text-[10px] font-mono" style={{ background: "rgba(76,215,246,0.2)", color: "var(--color-secondary)" }}>TypeScript</span>
                   <span className="px-2 py-1 rounded text-[10px] font-mono" style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)" }}>Node.js</span>
                 </div>
-                {/* AI scan line */}
+                {/* Scan line */}
                 <div
                   className="absolute left-0 w-full h-[2px] animate-scan"
                   style={{ background: "var(--color-secondary)", boxShadow: "0 0 10px #4cd7f6" }}
                 />
               </div>
 
-              {/* AI Insights Card */}
+              {/* Insights Card */}
               <div
                 className="absolute bottom-[10%] right-[-5%] w-[60%] h-[40%] glass-panel-static rounded-xl p-4 animate-float-reverse z-10"
                 style={{ border: "1px solid rgba(255,255,255,0.1)" }}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <span className="material-symbols-outlined text-[var(--color-secondary)] text-sm">auto_awesome</span>
-                  <span className="text-xs font-semibold text-[var(--color-secondary)]">AI Insights</span>
+                  <span className="text-xs font-semibold text-[var(--color-secondary)]">Resume Insights</span>
                 </div>
                 <div className="h-2 w-full rounded mb-2" style={{ background: "rgba(76,215,246,0.2)" }}>
                   <div className="h-full w-[85%] rounded" style={{ background: "var(--color-secondary)" }} />
@@ -221,6 +221,63 @@ export default function HomePage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Learning & Inspiration Section */}
+      <section className="relative z-10 px-6 pb-24 max-w-7xl mx-auto w-full">
+        <div className="glass-panel-static rounded-2xl p-10 md:p-14 relative overflow-hidden flex flex-col md:flex-row items-center gap-12" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+          {/* Decorative Background */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--color-primary)] opacity-10 rounded-full blur-[80px] pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-[var(--color-secondary)] opacity-10 rounded-full blur-[80px] pointer-events-none" />
+
+          <div className="flex-1 z-10 flex flex-col gap-6">
+            <h2 className="text-3xl md:text-4xl font-bold text-[var(--color-on-surface)] leading-tight">
+              Level Up Your Career <br className="hidden md:block"/>
+              <span className="text-[var(--color-primary)]">By Learning From Others</span>
+            </h2>
+            <p className="text-[var(--color-on-surface-variant)] leading-relaxed text-lg max-w-xl">
+              Don't build your career in a vacuum. ResumeAtlas lets you analyze the profiles of successful developers so you can:
+            </p>
+            <ul className="flex flex-col gap-4 mt-2">
+              {[
+                { icon: "edit_document", text: "Improve your own resume by seeing what formats and phrasing work best." },
+                { icon: "lightbulb", text: "Discover unique project ideas that actually impress recruiters." },
+                { icon: "school", text: "Identify trending technologies and skills you should learn next." }
+              ].map((item, idx) => (
+                <li key={idx} className="flex items-start gap-4">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center bg-[var(--color-surface-container)] shrink-0 mt-1">
+                    <span className="material-symbols-outlined text-[18px] text-[var(--color-secondary)]">{item.icon}</span>
+                  </div>
+                  <span className="text-[var(--color-on-surface)] leading-relaxed">{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          
+          <div className="flex-1 w-full z-10 flex justify-center">
+            {/* Visual representation */}
+            <div className="relative w-full max-w-sm aspect-[4/3] glass-panel rounded-xl border border-white/10 p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+                <span className="material-symbols-outlined text-[var(--color-primary)]">trending_up</span>
+                <span className="font-semibold text-sm tracking-wide uppercase text-[var(--color-on-surface-variant)]">Career Growth Trajectory</span>
+              </div>
+              <div className="flex-1 flex items-end gap-3 pt-4">
+                <div className="w-1/4 bg-[var(--color-surface-container-high)] rounded-t-sm h-[30%] relative group">
+                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-xs bg-[var(--color-surface-container-highest)] px-2 py-1 rounded transition-opacity shadow-lg">Learn</div>
+                </div>
+                <div className="w-1/4 bg-[var(--color-tertiary-fixed)] opacity-50 rounded-t-sm h-[50%] relative group">
+                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-xs bg-[var(--color-surface-container-highest)] px-2 py-1 rounded transition-opacity shadow-lg">Build</div>
+                </div>
+                <div className="w-1/4 bg-[var(--color-secondary)] opacity-70 rounded-t-sm h-[75%] relative group">
+                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-xs bg-[var(--color-surface-container-highest)] px-2 py-1 rounded transition-opacity shadow-lg">Apply</div>
+                </div>
+                <div className="w-1/4 bg-[var(--color-primary)] rounded-t-sm h-[100%] relative group">
+                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 text-xs bg-[var(--color-surface-container-highest)] px-2 py-1 rounded transition-opacity shadow-lg">Hired</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>

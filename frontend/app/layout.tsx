@@ -5,7 +5,7 @@ import { Navbar } from "@/components/Navbar";
 export const metadata: Metadata = {
   title: "ResumeAtlas — Find Real Developer Resumes",
   description:
-    "Search thousands of anonymized developer resumes collected from Reddit. Gain insights into real-world tech stacks and career progressions using AI.",
+    "Search thousands of anonymized developer resumes collected from Reddit. Gain insights into real-world tech stacks and career progressions using advanced data analysis.",
   keywords: ["developer resumes", "tech stack", "career", "recruiting", "skills"],
 };
 
