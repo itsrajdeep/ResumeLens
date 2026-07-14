@@ -2,7 +2,10 @@
 Crawl endpoints — trigger and monitor Reddit sync.
 """
 import logging
+from typing import Optional
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -15,17 +18,24 @@ router = APIRouter()
 settings = get_settings()
 
 
+class CrawlRequest(BaseModel):
+    subreddits: Optional[list[str]] = None
+
+
 @router.post("/trigger")
 def trigger_crawl(
     background_tasks: BackgroundTasks,
-    subreddits: list[str] | None = None,
+    body: CrawlRequest = CrawlRequest(),
     db: Session = Depends(get_db),
 ):
     """
     Trigger an incremental crawl in the background.
     Defaults to the subreddits configured in settings.
+
+    Body (optional JSON):
+        {"subreddits": ["EngineeringResumes", "resumes"]}
     """
-    targets = subreddits or settings.target_subreddits
+    targets = body.subreddits or settings.target_subreddits
     if not targets:
         raise HTTPException(status_code=400, detail="No subreddits specified.")
 

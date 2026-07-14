@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
 
-    # ── Reddit ───────────────────────────────────────
-    reddit_user_agent: str = "ResumeAtlas/1.0 (Educational Project)"
+    # ── SocialCrawl (Reddit proxy) ───────────────────
+    socialcrawl_api_key: str = ""  # Get free key at https://www.socialcrawl.dev
     target_subreddits: list[str] = Field(
         default=["EngineeringResumes", "resumes", "developersIndia"]
     )

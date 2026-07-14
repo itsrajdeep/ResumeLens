@@ -26,7 +26,8 @@ def _get_or_create_sync_state(db: Session, subreddit: str) -> SyncState:
     if not state:
         state = SyncState(subreddit=subreddit, total_posts_synced=0)
         db.add(state)
-        db.flush()
+        db.commit()
+        db.refresh(state)
     return state
 
 
@@ -36,6 +37,9 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
     Returns a summary dict: {subreddit, new_posts, skipped, errors}.
     """
     state = _get_or_create_sync_state(db, subreddit)
+    state_id = state.id  # Cache the ID — survive rollbacks
+    last_post_id = state.last_post_id  # Cache — survive rollbacks
+
     new_posts = skipped = errors = 0
     newest_fullname: str | None = None
     _pending_resume_ids: list[int] = []
@@ -46,7 +50,7 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
         if newest_fullname is None:
             newest_fullname = fullname
 
-        if state.last_post_id and fullname == state.last_post_id:
+        if last_post_id and fullname == last_post_id:
             logger.info("Reached last sync point (%s), stopping.", fullname)
             break
 
@@ -82,6 +86,7 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
                 except Exception as dl_err:
                     logger.warning("Download failed for %s: %s", data["file_url"], dl_err)
 
+            db.commit()
             new_posts += 1
 
         except Exception as exc:
@@ -90,13 +95,18 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
             errors += 1
             continue
 
-    db.commit()
-
-    if newest_fullname:
-        state.last_post_id = newest_fullname
-    state.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    state.total_posts_synced = (state.total_posts_synced or 0) + new_posts
-    db.commit()
+    # Update sync state — re-query by ID to avoid detached-instance issues after rollback
+    try:
+        state = db.query(SyncState).filter(SyncState.id == state_id).first()
+        if state:
+            if newest_fullname:
+                state.last_post_id = newest_fullname
+            state.last_sync_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            state.total_posts_synced = (state.total_posts_synced or 0) + new_posts
+            db.commit()
+    except Exception as exc:
+        logger.error("Failed to update sync state for r/%s: %s", subreddit, exc)
+        db.rollback()
 
     summary = {
         "subreddit": subreddit,

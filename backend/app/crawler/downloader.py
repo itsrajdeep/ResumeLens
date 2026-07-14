@@ -26,7 +26,7 @@ settings = get_settings()
 _MAX_FILE_BYTES = 20 * 1024 * 1024
 
 _HEADERS = {
-    "User-Agent": settings.reddit_user_agent,
+    "User-Agent": "ResumeAtlas/1.0",
 }
 
 
