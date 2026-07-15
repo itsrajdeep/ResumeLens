@@ -1,134 +1,151 @@
 """
-Reddit client — uses SocialCrawl API (https://www.socialcrawl.dev)
-to fetch subreddit posts without needing Reddit OAuth credentials.
+Reddit client — uses Playwright to scrape subreddit posts by intercepting
+Reddit's internal network requests (no API key required).
 
-SocialCrawl response shape (confirmed from API):
-{
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "post": {
-          "id": "pt1z6p",
-          "url": "https://reddit.com/r/.../comments/...",   ← Reddit thread URL
-          "content": {
-            "text": "<post title>",
-            "media_urls": ["https://i.redd.it/..."],        ← actual image/file URL
-            "thumbnail_url": "..."
-          },
-          "author": {"username": "...", "display_name": "..."},
-          "engagement": {"likes": 5, "comments": 3, ...},
-          "flags": {"deleted": false, "nsfw": false},
-          "published_at": "2021-09-22T06:58:06.000Z",
-          "ext": {"subreddit": "EngineeringResumes", "published_at_epoch": 1632293886}
-        }
-      }
-    ]
-  },
-  "pagination": {"next_cursor": null, "has_more": false}
-}
+Strategy:
+  1. Launch a headless Chromium browser via Playwright.
+  2. Navigate to the subreddit's new page.
+  3. Intercept XHR/fetch requests matching Reddit's internal "svc/shreddit/graphql"
+     or "gateway.reddit.com" endpoints to capture raw post JSON.
+  4. Scroll the page to trigger pagination / infinite scroll.
+  5. Normalize captured posts into the flat dict expected by post_filter.py and sync.py.
+
+Normalized post dict shape:
+    {
+        "id":               str,       # e.g. "pt1z6p"
+        "subreddit":        str,       # e.g. "EngineeringResumes"
+        "title":            str,
+        "author":           str,
+        "score":            int,
+        "created_utc":      float,     # Unix epoch
+        "permalink":        str,       # Full Reddit URL
+        "url":              str,       # File URL or permalink
+        "selftext":         str,       # Post body text (if any)
+        "removed_by_category": str | None,
+        "_media_urls":      list[str], # Direct image/file URLs
+    }
 """
 import logging
 import time
+import json
+from datetime import datetime, timezone
 from typing import Iterator
 
-import httpx
-
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
-settings = get_settings()
-
-_BASE_URL = "https://www.socialcrawl.dev/v1/reddit/subreddit/search"
-_RATE_SLEEP = 1.0  # seconds between paginated requests
 
 # File extensions we consider downloadable resume files
 RESUME_FILE_EXTENSIONS = frozenset([".pdf", ".png", ".jpg", ".jpeg"])
 
+# Reddit domains to intercept network requests from
+_INTERCEPT_PATTERNS = [
+    "**/svc/shreddit/**",
+    "**/gateway.reddit.com/**",
+    "**/www.reddit.com/r/*/new.json**",
+    "**reddit.com/r/*/new.json**",
+    "**/oauth.reddit.com/**",
+]
 
-def _extract_file_url(post: dict) -> str | None:
-    """
-    Extract a direct file URL from the SocialCrawl post object.
-    Priority: media_urls[] → thumbnail_url → None
-    """
-    content = post.get("content") or {}
-
-    # media_urls is the primary field for image/file attachments
-    media_urls = content.get("media_urls") or []
-    if media_urls:
-        for mu in media_urls:
-            if mu:
-                return str(mu)
-
-    # Thumbnail as fallback
-    thumb = content.get("thumbnail_url")
-    if thumb:
-        return str(thumb)
-
-    return None
+# How long to wait (ms) after scroll before capturing data
+_SCROLL_WAIT_MS = 2500
+# How many scroll iterations to do per pagination cycle
+_SCROLL_ITERATIONS = 3
 
 
-def _parse_post(post_obj: dict, subreddit: str) -> dict:
-    """
-    Map a SocialCrawl 'post' sub-object to the flat dict that
-    post_filter.py and sync.py expect (mirrors old Reddit JSON shape).
-    """
-    ext = post_obj.get("ext") or {}
-    content = post_obj.get("content") or {}
-    author = post_obj.get("author") or {}
-    engagement = post_obj.get("engagement") or {}
-    flags = post_obj.get("flags") or {}
+def _extract_media_urls_from_post(raw: dict) -> list[str]:
+    """Extract all direct image/file URLs from a raw Reddit post object."""
+    urls: list[str] = []
 
-    # ID — plain string like "pt1z6p"
-    post_id = str(post_obj.get("id") or "")
+    # Reddit's new API shape: data.children[].data
+    # Field: url_overridden_by_dest or url
+    for field in ("url_overridden_by_dest", "url"):
+        val = raw.get(field, "")
+        if val and any(val.lower().endswith(ext) for ext in RESUME_FILE_EXTENSIONS):
+            urls.append(val)
+            break
 
-    # Title lives in content.text for SocialCrawl
-    title = content.get("text") or post_obj.get("title") or ""
+    # Gallery posts: media_metadata dict
+    mm = raw.get("media_metadata") or {}
+    for meta in mm.values():
+        # Each entry has 's' (source) with 'u' (url)
+        src = (meta.get("s") or {}).get("u", "")
+        if src:
+            # Reddit encodes & as &amp; in JSON sometimes
+            urls.append(src.replace("&amp;", "&"))
 
-    # Score
-    score = int(engagement.get("likes") or engagement.get("score") or 0)
+    # Preview images (lower priority, but still useful)
+    preview = (raw.get("preview") or {}).get("images") or []
+    for img in preview:
+        src_url = (img.get("source") or {}).get("url", "")
+        if src_url:
+            urls.append(src_url.replace("&amp;", "&"))
 
-    # Timestamp — prefer epoch from ext, fallback to parsing published_at
-    epoch = ext.get("published_at_epoch")
-    if not epoch:
-        ts_str = post_obj.get("published_at") or ""
-        if ts_str:
-            try:
-                from datetime import datetime, timezone
-                epoch = datetime.fromisoformat(
-                    ts_str.replace("Z", "+00:00")
-                ).timestamp()
-            except ValueError:
-                epoch = 0.0
-        else:
-            epoch = 0.0
+    return list(dict.fromkeys(urls))  # deduplicate, preserve order
 
-    # Permalink — SocialCrawl returns the full Reddit URL as url
-    permalink = post_obj.get("url") or ""
 
-    # File URL — from media attachments
-    file_url = _extract_file_url(post_obj)
+def _normalize_post(raw: dict, subreddit: str) -> dict:
+    """Normalize a Reddit API post 'data' dict into our flat format."""
+    post_id = str(raw.get("id") or "")
+    title = str(raw.get("title") or "")
+    author = str(raw.get("author") or "[deleted]")
+    score = int(raw.get("score") or 0)
+    created_utc = float(raw.get("created_utc") or 0.0)
+    permalink = raw.get("permalink") or ""
+    if permalink and not permalink.startswith("http"):
+        permalink = f"https://www.reddit.com{permalink}"
+    selftext = str(raw.get("selftext") or "")
+    removed = raw.get("removed_by_category") or raw.get("banned_by")
 
-    # Deleted/removed flag
-    removed = None
-    if flags.get("deleted"):
-        removed = "deleted"
+    media_urls = _extract_media_urls_from_post(raw)
+
+    # Primary URL — prefer a direct file URL, fallback to permalink
+    primary_url = media_urls[0] if media_urls else permalink
 
     return {
         "id": post_id,
-        "subreddit": ext.get("subreddit") or subreddit,
+        "subreddit": raw.get("subreddit") or subreddit,
         "title": title,
-        "author": author.get("username") or "[deleted]",
+        "author": author,
         "score": score,
-        "created_utc": float(epoch),
+        "created_utc": created_utc,
         "permalink": permalink,
-        # url = file URL if present, else the Reddit thread URL (for selftext posts)
-        "url": file_url or permalink,
-        "selftext": "",          # SocialCrawl doesn't return post body text
-        "removed_by_category": removed,
-        # Pass through the raw media_urls so post_filter can check them
-        "_media_urls": content.get("media_urls") or [],
+        "url": primary_url,
+        "selftext": selftext,
+        "removed_by_category": str(removed) if removed else None,
+        "_media_urls": media_urls,
     }
+
+
+def _parse_reddit_listing_json(body: str, subreddit: str) -> list[dict]:
+    """
+    Parse a Reddit listing JSON response (the .json endpoint format)
+    and return a list of normalized post dicts.
+    """
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return []
+
+    posts: list[dict] = []
+
+    # Standard listing: {"data": {"children": [{"kind": "t3", "data": {...}}]}}
+    if isinstance(data, dict):
+        children = (data.get("data") or {}).get("children") or []
+        for child in children:
+            if child.get("kind") == "t3":
+                raw = child.get("data") or {}
+                if raw.get("id"):
+                    posts.append(_normalize_post(raw, subreddit))
+
+    # Array of two listings (link + comment): take first
+    elif isinstance(data, list) and data:
+        children = (data[0].get("data") or {}).get("children") or []
+        for child in children:
+            if child.get("kind") == "t3":
+                raw = child.get("data") or {}
+                if raw.get("id"):
+                    posts.append(_normalize_post(raw, subreddit))
+
+    return posts
 
 
 def iter_subreddit_posts(
@@ -137,89 +154,168 @@ def iter_subreddit_posts(
     after: str | None = None,
 ) -> Iterator[dict]:
     """
-    Yield normalized post dicts from r/{subreddit} via SocialCrawl API.
-
-    Automatically paginates via next_cursor until `limit` posts yielded
-    or no more pages remain.
+    Yield normalized post dicts from r/{subreddit} using Playwright
+    to intercept Reddit's internal network requests.
 
     Args:
         subreddit: Subreddit name (no r/ prefix).
-        limit: Total posts to yield.
-        after: Kept for API compatibility; SocialCrawl uses cursor pagination.
+        limit: Maximum number of posts to yield.
+        after: Optional Reddit post fullname to start after (for pagination).
     """
-    api_key = settings.socialcrawl_api_key
-    if not api_key:
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+    except ImportError:
         logger.error(
-            "SOCIALCRAWL_API_KEY is not set in .env. "
-            "Get a free API key at https://www.socialcrawl.dev"
+            "Playwright is not installed. Run: pip install playwright && "
+            "playwright install chromium"
         )
         return
 
-    headers = {"x-api-key": api_key}
-    fetched = 0
-    cursor: str | None = None
-    first_page = True
+    captured_posts: list[dict] = []
+    seen_ids: set[str] = set()
 
-    with httpx.Client(timeout=20, follow_redirects=True) as client:
-        while fetched < limit:
-            params: dict = {
-                "subreddit": subreddit,
-                "sort": "new",
-                "limit": min(25, limit - fetched),
-            }
-            if cursor:
-                params["cursor"] = cursor
+    url = f"https://www.reddit.com/r/{subreddit}/new/"
+    if after:
+        url += f"?after={after}"
 
+    logger.info("Playwright: launching browser for r/%s", subreddit)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+            locale="en-US",
+        )
+
+        # ------------------------------------------------------------------
+        # Intercept network responses to grab Reddit's JSON API calls
+        # ------------------------------------------------------------------
+        def handle_response(response):
             try:
-                resp = client.get(_BASE_URL, params=params, headers=headers)
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                logger.error(
-                    "SocialCrawl API error for r/%s [%s]: %s",
-                    subreddit, exc.response.status_code, exc.response.text[:300],
-                )
-                break
-            except httpx.HTTPError as exc:
-                logger.error("SocialCrawl network error for r/%s: %s", subreddit, exc)
-                break
+                req_url = response.url
+                # We only care about Reddit's listing JSON endpoints
+                if (
+                    f"/r/{subreddit}" in req_url
+                    and ("new.json" in req_url or "sort=new" in req_url)
+                    and response.status == 200
+                ):
+                    try:
+                        body = response.text()
+                        new_posts = _parse_reddit_listing_json(body, subreddit)
+                        for p in new_posts:
+                            if p["id"] and p["id"] not in seen_ids:
+                                seen_ids.add(p["id"])
+                                captured_posts.append(p)
+                        if new_posts:
+                            logger.debug(
+                                "Intercepted %d posts from %s", len(new_posts), req_url
+                            )
+                    except Exception as parse_err:
+                        logger.debug("Could not parse intercepted response: %s", parse_err)
+            except Exception:
+                pass
 
-            body = resp.json()
-            if not body.get("success"):
-                logger.error("SocialCrawl returned non-success for r/%s: %s", subreddit, body)
-                break
+        page = context.new_page()
+        page.on("response", handle_response)
 
-            data = body.get("data") or {}
-            raw_items = data.get("items") or []
+        try:
+            logger.info("Playwright: navigating to %s", url)
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(3000)  # Let initial posts load
 
-            if not raw_items:
-                logger.info("No items returned from SocialCrawl for r/%s", subreddit)
-                break
+            # ---------------------------------------------------------------
+            # Scroll to trigger Reddit's infinite scroll / load more posts
+            # ---------------------------------------------------------------
+            scroll_round = 0
+            while len(captured_posts) < limit:
+                scroll_round += 1
+                prev_count = len(captured_posts)
 
-            if first_page:
-                logger.info(
-                    "SocialCrawl: %d credits remaining, cached=%s",
-                    body.get("credits_remaining", "?"),
-                    body.get("cached", "?"),
-                )
-                first_page = False
+                # Scroll to bottom
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(_SCROLL_WAIT_MS)
 
-            for item in raw_items:
-                if fetched >= limit:
-                    return
-                # Each item has a "post" sub-object
-                post_obj = item.get("post") or item
-                yield _parse_post(post_obj, subreddit)
-                fetched += 1
+                # Also try clicking "Load more" buttons if they exist
+                try:
+                    load_more = page.query_selector("[data-testid='load-more-button']")
+                    if load_more:
+                        load_more.click()
+                        page.wait_for_timeout(2000)
+                except Exception:
+                    pass
 
-            # Pagination
-            pagination = body.get("pagination") or {}
-            cursor = pagination.get("next_cursor")
-            has_more = pagination.get("has_more", False)
+                # If no new posts after scroll, try the .json endpoint directly
+                if len(captured_posts) == prev_count:
+                    logger.debug(
+                        "No new posts after scroll %d; trying .json endpoint", scroll_round
+                    )
+                    after_param = f"t3_{captured_posts[-1]['id']}" if captured_posts else ""
+                    json_url = (
+                        f"https://www.reddit.com/r/{subreddit}/new.json"
+                        f"?sort=new&limit=25"
+                        + (f"&after={after_param}" if after_param else "")
+                    )
+                    try:
+                        api_response = page.evaluate(
+                            f"""async () => {{
+                                const r = await fetch('{json_url}', {{
+                                    headers: {{'User-Agent': 'ResumeAtlas/1.0'}}
+                                }});
+                                return await r.text();
+                            }}"""
+                        )
+                        new_posts = _parse_reddit_listing_json(api_response, subreddit)
+                        added = 0
+                        for p in new_posts:
+                            if p["id"] and p["id"] not in seen_ids:
+                                seen_ids.add(p["id"])
+                                captured_posts.append(p)
+                                added += 1
+                        logger.debug("Fetched %d posts via .json endpoint", added)
+                        if added == 0:
+                            logger.info(
+                                "No more posts available for r/%s after %d posts",
+                                subreddit, len(captured_posts)
+                            )
+                            break
+                    except Exception as fetch_err:
+                        logger.warning("In-page fetch failed: %s", fetch_err)
+                        break
 
-            if not cursor or not has_more:
-                logger.info(
-                    "SocialCrawl: no more pages for r/%s (fetched %d)", subreddit, fetched
-                )
-                break
+                if scroll_round >= _SCROLL_ITERATIONS * 3:
+                    logger.info(
+                        "Playwright: reached max scroll limit for r/%s", subreddit
+                    )
+                    break
 
-            time.sleep(_RATE_SLEEP)
+        except PWTimeout:
+            logger.warning(
+                "Playwright timed out navigating to r/%s — yielding %d posts captured so far",
+                subreddit, len(captured_posts)
+            )
+        except Exception as exc:
+            logger.error("Playwright error for r/%s: %s", subreddit, exc)
+        finally:
+            page.close()
+            context.close()
+            browser.close()
+
+    logger.info(
+        "Playwright: captured %d total posts for r/%s", len(captured_posts), subreddit
+    )
+
+    # Yield up to `limit` posts
+    for post in captured_posts[:limit]:
+        yield post

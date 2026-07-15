@@ -1,288 +1,304 @@
+﻿"use client";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 
-// In a real app, this would fetch from the API via the resume ID
-const resume = {
-  title: "Senior Backend Engineer",
-  location: "San Francisco, CA (Remote)",
-  experience: "7+ Years Exp",
+const BACKEND = "http://localhost:8000";
 
-  summary:
-    "Performance-driven Senior Backend Engineer with over 7 years of experience designing and scaling highly available distributed systems. Specializes in Go, gRPC, and Kubernetes. Proven track record of optimizing microservices to handle millions of concurrent requests while reducing infrastructure costs.",
-  skills: {
-    languages: ["Go (Golang)", "Python", "Rust", "SQL"],
-    infrastructure: ["Kubernetes", "Docker", "AWS (EKS, S3, EC2)", "Terraform", "CI/CD (GitHub Actions)"],
-    databases: ["PostgreSQL", "Redis", "Kafka", "Elasticsearch"],
-  },
-  experience_items: [
-    {
-      title: "Senior Backend Engineer",
-      company: "TechNova Solutions",
-      period: "2021 - Present",
-      bullets: [
-        "Architected and migrated legacy monolith to Go-based microservices, improving system throughput by 300% and reducing latency by 40%.",
-        "Implemented event-driven architecture using Kafka, enabling real-time data processing for over 5M daily active users.",
-        "Led a team of 4 engineers, conducting code reviews and mentoring junior staff on concurrency patterns in Go.",
-        "Optimized PostgreSQL queries and implemented Redis caching layer, decreasing database load by 60%.",
-      ],
-      active: true,
-    },
-    {
-      title: "Backend Developer",
-      company: "DataFlow Inc.",
-      period: "2018 - 2021",
-      bullets: [
-        "Developed RESTful APIs in Python (FastAPI) for data aggregation platform used by enterprise clients.",
-        "Containerized applications using Docker and deployed via Kubernetes, establishing CI/CD pipelines with GitLab CI.",
-        "Integrated third-party payment gateways (Stripe, PayPal) with secure webhook handling.",
-      ],
-      active: false,
-    },
-  ],
-  projects: [
-    {
-      name: "Distributed Task Queue",
-      description: "Open-source distributed task queue written in Go, inspired by Celery. Uses Redis as a broker.",
-      tags: ["Go", "Redis"],
-    },
-    {
-      name: "K8s Log Aggregator",
-      description: "Custom operator for Kubernetes that streams logs from specific pods to an external Elasticsearch cluster.",
-      tags: ["Kubernetes", "Elasticsearch"],
-    },
-  ],
-  education: {
-    degree: "B.S. Computer Science",
-    school: "University of California, Berkeley",
-    period: "2014 - 2018",
-  },
+interface Resume {
+  id: number;
+  post_id: number;
+  category: string | null;
+  summary: string | null;
+  ocr_text: string | null;
+  parsed_data: Record<string, unknown> | null;
+  anonymous_file_path: string | null;
+  embedding_id: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string | null;
+  file_url: string | null;
+  file_type: string | null;
+  subreddit: string | null;
+  score: number | null;
+  permalink: string | null;
+  author: string | null;
+  skills: { name: string; category: string | null }[];
+  projects: { id: number; name: string; description: string; tech_tags: string[] }[];
+}
 
-};
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-white/5 ${className}`} />;
+}
 
-export default function ResumeDetailPage({ params }: { params: { id: string } }) {
+export default function ResumeDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const [resume, setResume] = useState<Resume | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imgExpanded, setImgExpanded] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    fetch(`${BACKEND}/api/resumes/${id}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`API error ${r.status}`);
+        return r.json();
+      })
+      .then((data) => { setResume(data); setLoading(false); })
+      .catch((e) => { setError(e.message); setLoading(false); });
+  }, [id]);
+
+  const yoeMatch = resume?.title?.match(/\[(\d+)\+?\s*YoE\]/i);
+  const isStudent = /\[Student\]/i.test(resume?.title || "");
+  const yoeLabel = isStudent ? "Student" : yoeMatch ? `${yoeMatch[1]} YoE` : null;
+  const postedDate = resume?.created_at
+    ? new Date(resume.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
+    : null;
+
+  if (loading) {
+    return (
+      <div className="flex pt-16 min-h-screen">
+        <main className="flex-1 px-6 md:px-10 pb-20 max-w-5xl mx-auto w-full pt-8">
+          <Skeleton className="h-4 w-48 mb-8" />
+          <Skeleton className="h-10 w-3/4 mb-4" />
+          <Skeleton className="h-4 w-1/3 mb-8" />
+          <Skeleton className="w-full aspect-[8/11] rounded-xl mb-6" />
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !resume) {
+    return (
+      <div className="flex pt-16 min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <span className="material-symbols-outlined text-7xl text-red-400/50">error_outline</span>
+          <h2 className="text-xl font-semibold text-[var(--color-on-surface)]">Resume not found</h2>
+          <p className="text-sm text-red-400">{error}</p>
+          <Link href="/search" className="btn-primary px-6 py-2 rounded-lg text-sm mt-2">Back to Search</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex pt-16 min-h-screen">
-      {/* Sidebar — Role Categories */}
-      <aside
-        className="hidden md:flex fixed left-0 top-16 h-[calc(100vh-64px)] w-[280px] flex-col py-10 z-40"
-        style={{
-          background: "rgba(27,31,44,0.75)",
-          backdropFilter: "blur(20px)",
-          borderRight: "1px solid rgba(255,255,255,0.07)",
-        }}
-      >
-        <div className="px-6 mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(192,193,255,0.1)", border: "1px solid rgba(192,193,255,0.2)" }}>
-              <span className="material-symbols-outlined text-[var(--color-primary)] text-[18px]">filter_list</span>
-            </div>
-            <h2 className="text-lg font-semibold text-[var(--color-primary)]">Role Categories</h2>
-          </div>
-          <p className="text-xs text-[var(--color-on-surface-variant)]">Refine your search</p>
-        </div>
-
-        <nav className="flex flex-col gap-1 flex-grow overflow-y-auto">
-          {[
-            { icon: "code", label: "Frontend" },
-            { icon: "database", label: "Backend", active: true },
-            { icon: "layers", label: "Fullstack" },
-            { icon: "terminal", label: "DevOps" },
-          ].map((item) => (
-            <Link
-              key={item.label}
-              href="/search"
-              className="flex items-center gap-4 px-6 py-3 transition-all"
-              style={{
-                background: item.active ? "rgba(76,215,246,0.08)" : "transparent",
-                color: item.active ? "var(--color-secondary)" : "var(--color-on-surface-variant)",
-                borderLeft: item.active ? "4px solid var(--color-secondary)" : "4px solid transparent",
-              }}
-            >
-              <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-              <span className="text-xs font-semibold uppercase tracking-wider">{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-
-        <div className="px-6 mt-auto mb-8">
-          <button className="w-full btn-primary py-3 rounded-lg text-xs font-semibold uppercase tracking-wider">
-            Apply Filters
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-1 border-t border-white/5 pt-4">
-          {[{ icon: "settings", label: "Settings" }, { icon: "help", label: "Help" }].map((item) => (
-            <a key={item.label} href="#" className="flex items-center gap-4 px-6 py-2 text-[var(--color-on-surface-variant)] hover:bg-white/5 hover:text-[var(--color-on-surface)] transition-all">
-              <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-              <span className="text-xs font-semibold uppercase tracking-wider">{item.label}</span>
-            </a>
-          ))}
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 md:ml-[280px] px-6 md:px-10 pb-20 max-w-[1440px] mx-auto w-full pt-8">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-[var(--color-on-surface-variant)] mb-4">
-          <Link href="/search" className="hover:text-[var(--color-primary)] transition-colors">Search</Link>
-          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <Link href="/search" className="hover:text-[var(--color-primary)] transition-colors">Backend Engineers</Link>
-          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-          <span className="text-[var(--color-on-surface)]">Senior Go Developer</span>
-        </div>
-
-        {/* Header */}
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <h1 className="text-[clamp(28px,4vw,48px)] font-bold text-[var(--color-on-surface)] mb-2" style={{ letterSpacing: "-0.02em" }}>
-              {resume.title}
-            </h1>
-            <div className="flex items-center gap-6 text-sm text-[var(--color-on-surface-variant)]">
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px]">location_on</span>
-                {resume.location}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px]">work_history</span>
-                {resume.experience}
-              </span>
-            </div>
-          </div>
-          <a
-            href="https://reddit.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wider transition-all"
-            style={{ border: "1px solid var(--color-outline-variant)", color: "var(--color-on-surface-variant)" }}
+      {imgExpanded && resume.file_url && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.93)", backdropFilter: "blur(8px)" }}
+          onClick={() => setImgExpanded(false)}
+        >
+          <button
+            className="absolute top-5 right-5 w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-all z-10"
+            onClick={() => setImgExpanded(false)}
           >
-            <span className="material-symbols-outlined text-[18px]">forum</span>
-            Source: r/resumes
-          </a>
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+          <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={resume.file_url}
+              alt={resume.title || "Resume"}
+              className="w-full h-auto max-h-[90vh] object-contain rounded-xl shadow-2xl"
+              style={{ border: "1px solid rgba(255,255,255,0.1)" }}
+            />
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 px-6 md:px-10 pb-20 max-w-5xl mx-auto w-full pt-8">
+        <div className="flex items-center gap-2 text-xs text-[var(--color-on-surface-variant)] mb-6">
+          <Link href="/search" className="hover:text-[var(--color-primary)] transition-colors flex items-center gap-1">
+            <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+            Search
+          </Link>
+          <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+          <span className="text-[var(--color-on-surface)] truncate max-w-xs">{resume.title || `Resume #${resume.id}`}</span>
         </div>
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Resume Content */}
-          <div className="lg:col-span-12 flex flex-col gap-6">
-            {/* Summary */}
-            <section
-              className="rounded-xl p-6"
-              style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)", borderTop: "1px solid rgba(255,255,255,0.2)" }}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {yoeLabel && (
+                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                  style={{ background: "rgba(192,193,255,0.15)", color: "var(--color-primary)", border: "1px solid rgba(192,193,255,0.3)" }}>
+                  {yoeLabel}
+                </span>
+              )}
+              {resume.category && (
+                <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                  style={{ background: "rgba(76,215,246,0.12)", color: "var(--color-secondary)", border: "1px solid rgba(76,215,246,0.25)" }}>
+                  {resume.category}
+                </span>
+              )}
+            </div>
+            <h1 className="text-2xl md:text-3xl font-bold text-[var(--color-on-surface)] leading-tight" style={{ letterSpacing: "-0.02em" }}>
+              {resume.title || `Resume #${resume.id}`}
+            </h1>
+            <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--color-on-surface-variant)]">
+              {resume.author && (
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[15px]">person</span>
+                  u/{resume.author}
+                </span>
+              )}
+              {resume.subreddit && (
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[15px]">forum</span>
+                  r/{resume.subreddit}
+                </span>
+              )}
+              {resume.score !== null && (
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[15px] text-[var(--color-secondary)]">arrow_upward</span>
+                  {resume.score} upvotes
+                </span>
+              )}
+              {postedDate && (
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[15px]">calendar_today</span>
+                  {postedDate}
+                </span>
+              )}
+            </div>
+          </div>
+          {resume.permalink && (
+            <a
+              href={`https://reddit.com${resume.permalink}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wider shrink-0 transition-all hover:bg-white/5"
+              style={{ border: "1px solid var(--color-outline-variant)", color: "var(--color-on-surface-variant)" }}
             >
-              <h3 className="text-lg font-semibold text-[var(--color-primary)] mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined">person</span> Summary
-              </h3>
-              <p className="text-sm text-[var(--color-on-surface-variant)] leading-relaxed">{resume.summary}</p>
-            </section>
+              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+              View on Reddit
+            </a>
+          )}
+        </div>
 
-            {/* Technical Arsenal */}
-            <section
-              className="rounded-xl p-6"
-              style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)", borderTop: "1px solid rgba(255,255,255,0.2)" }}
+        {resume.file_url && (
+          <section className="mb-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-on-surface-variant)] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[16px]">description</span>
+                Resume Document
+              </h2>
+              <button
+                onClick={() => setImgExpanded(true)}
+                className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline"
+              >
+                <span className="material-symbols-outlined text-[15px]">zoom_in</span>
+                Full screen
+              </button>
+            </div>
+            <div
+              className="relative w-full rounded-2xl overflow-hidden cursor-zoom-in group"
+              style={{ border: "1px solid rgba(255,255,255,0.1)", background: "rgba(30,41,59,0.5)" }}
+              onClick={() => setImgExpanded(true)}
             >
-              <h3 className="text-lg font-semibold text-[var(--color-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined">terminal</span> Technical Arsenal
-              </h3>
-              {Object.entries(resume.skills).map(([cat, skills]) => (
-                <div key={cat} className="mb-4">
-                  <h4 className="text-xs font-semibold uppercase tracking-widest text-[var(--color-on-surface)] mb-2">
-                    {cat === "languages" ? "Languages" : cat === "infrastructure" ? "Infrastructure & Tools" : "Databases & Messaging"}
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {skills.map((s) => (
-                      <span key={s} className="skill-badge">{s}</span>
-                    ))}
-                  </div>
+              {!imgLoaded && (
+                <div className="absolute inset-0 animate-pulse bg-white/5 flex items-center justify-center" style={{ minHeight: "400px" }}>
+                  <span className="material-symbols-outlined text-4xl text-white/10">description</span>
+                </div>
+              )}
+              <img
+                src={resume.file_url}
+                alt={resume.title || "Resume"}
+                className={`w-full h-auto object-cover object-top transition-all duration-500 group-hover:brightness-110 ${imgLoaded ? "opacity-100" : "opacity-0"}`}
+                onLoad={() => setImgLoaded(true)}
+              />
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white"
+                  style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                  <span className="material-symbols-outlined text-[18px]">zoom_in</span>
+                  Click to expand
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {resume.summary && (
+          <section className="rounded-xl p-6 mb-6"
+            style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <h3 className="text-base font-semibold text-[var(--color-primary)] mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              AI Summary
+            </h3>
+            <p className="text-sm text-[var(--color-on-surface-variant)] leading-relaxed">{resume.summary}</p>
+          </section>
+        )}
+
+        {resume.skills && resume.skills.length > 0 && (
+          <section className="rounded-xl p-6 mb-6"
+            style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <h3 className="text-base font-semibold text-[var(--color-primary)] mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">terminal</span>
+              Skills
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {resume.skills.map((s) => (
+                <span key={s.name} className="skill-badge">{s.name}</span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {resume.projects && resume.projects.length > 0 && (
+          <section className="rounded-xl p-6 mb-6"
+            style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <h3 className="text-base font-semibold text-[var(--color-primary)] mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">rocket_launch</span>
+              Projects
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {resume.projects.map((p) => (
+                <div key={p.id} className="p-4 rounded-lg" style={{ background: "rgba(27,31,44,0.5)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <h4 className="text-sm font-semibold text-[var(--color-on-surface)] mb-1">{p.name}</h4>
+                  {p.description && <p className="text-xs text-[var(--color-on-surface-variant)] mb-3 leading-relaxed">{p.description}</p>}
+                  {p.tech_tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.tech_tags.map((t) => (
+                        <span key={t} className="text-[10px] px-2 py-0.5 rounded"
+                          style={{ background: "rgba(192,193,255,0.1)", color: "var(--color-primary)" }}>{t}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
-            </section>
+            </div>
+          </section>
+        )}
 
-            {/* Experience */}
-            <section
-              className="rounded-xl p-6"
-              style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)", borderTop: "1px solid rgba(255,255,255,0.2)" }}
-            >
-              <h3 className="text-lg font-semibold text-[var(--color-primary)] mb-6 flex items-center gap-2">
-                <span className="material-symbols-outlined">work</span> Professional Experience
-              </h3>
-              <div className="relative border-l border-[var(--color-outline-variant)]/40 ml-3 pl-6">
-                {resume.experience_items.map((item, idx) => (
-                  <div key={idx} className={`relative ${idx < resume.experience_items.length - 1 ? "mb-8" : ""}`}>
-                    <div
-                      className="absolute w-3 h-3 rounded-full -left-[31px] top-1.5"
-                      style={{
-                        background: item.active ? "var(--color-primary)" : "var(--color-outline-variant)",
-                        border: "2px solid var(--color-surface)",
-                      }}
-                    />
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="text-lg font-semibold text-[var(--color-on-surface)]">{item.title}</h4>
-                        <p className="text-sm text-[var(--color-secondary)]">{item.company}</p>
-                      </div>
-                      <span
-                        className="text-xs font-medium px-2 py-1 rounded"
-                        style={{ background: "rgba(70,69,84,0.4)", color: "var(--color-on-surface-variant)" }}
-                      >
-                        {item.period}
-                      </span>
-                    </div>
-                    <ul className="list-disc list-outside ml-4 space-y-1.5">
-                      {item.bullets.map((b, i) => (
-                        <li key={i} className="text-sm text-[var(--color-on-surface-variant)] leading-relaxed">{b}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </section>
+        {resume.ocr_text && (
+          <details className="rounded-xl mb-6 overflow-hidden"
+            style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <summary className="p-6 cursor-pointer text-base font-semibold text-[var(--color-primary)] flex items-center gap-2 select-none list-none">
+              <span className="material-symbols-outlined text-[18px]">text_snippet</span>
+              Extracted Text (OCR)
+              <span className="ml-auto material-symbols-outlined text-[18px] text-[var(--color-outline)]">expand_more</span>
+            </summary>
+            <div className="px-6 pb-6">
+              <pre className="text-xs text-[var(--color-on-surface-variant)] whitespace-pre-wrap leading-relaxed font-mono"
+                style={{ background: "rgba(15,19,31,0.5)", padding: "1rem", borderRadius: "0.5rem", maxHeight: "400px", overflowY: "auto" }}>
+                {resume.ocr_text}
+              </pre>
+            </div>
+          </details>
+        )}
 
-            {/* Projects */}
-            <section
-              className="rounded-xl p-6"
-              style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)", borderTop: "1px solid rgba(255,255,255,0.2)" }}
-            >
-              <h3 className="text-lg font-semibold text-[var(--color-primary)] mb-5 flex items-center gap-2">
-                <span className="material-symbols-outlined">rocket_launch</span> Notable Projects
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {resume.projects.map((p) => (
-                  <div
-                    key={p.name}
-                    className="p-4 rounded-lg transition-colors"
-                    style={{ background: "rgba(27,31,44,0.5)", border: "1px solid rgba(255,255,255,0.05)" }}
-                  >
-                    <h4 className="text-base font-semibold text-[var(--color-on-surface)] mb-1">{p.name}</h4>
-                    <p className="text-xs text-[var(--color-on-surface-variant)] mb-3 leading-relaxed">{p.description}</p>
-                    <div className="flex gap-2">
-                      {p.tags.map((t) => (
-                        <span key={t} className="text-[11px] px-2 py-0.5 rounded" style={{ background: "rgba(192,193,255,0.1)", color: "var(--color-primary)" }}>{t}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            {/* Education */}
-            <section
-              className="rounded-xl p-6"
-              style={{ background: "rgba(30,41,59,0.7)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)", borderTop: "1px solid rgba(255,255,255,0.2)" }}
-            >
-              <h3 className="text-lg font-semibold text-[var(--color-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined">school</span> Education
-              </h3>
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="text-base font-semibold text-[var(--color-on-surface)]">{resume.education.degree}</h4>
-                  <p className="text-sm text-[var(--color-on-surface-variant)]">{resume.education.school}</p>
-                </div>
-                <span className="text-xs text-[var(--color-on-surface-variant)]">{resume.education.period}</span>
-              </div>
-            </section>
+        {!resume.summary && (!resume.skills || resume.skills.length === 0) && !resume.ocr_text && (
+          <div className="rounded-xl p-8 text-center"
+            style={{ background: "rgba(30,41,59,0.5)", border: "1px dashed rgba(255,255,255,0.1)" }}>
+            <span className="material-symbols-outlined text-4xl text-[var(--color-outline)] mb-3 block">hourglass_empty</span>
+            <p className="text-sm text-[var(--color-on-surface-variant)]">
+              This resume has not been processed yet. The AI pipeline will extract skills, generate a summary, and anonymize it shortly.
+            </p>
           </div>
-
-
-        </div>
+        )}
       </main>
     </div>
   );

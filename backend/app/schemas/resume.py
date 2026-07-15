@@ -29,6 +29,14 @@ class ResumeResponse(BaseModel):
     embedding_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Flattened post fields for frontend cards
+    title: Optional[str] = None
+    file_url: Optional[str] = None
+    file_type: Optional[str] = None
+    subreddit: Optional[str] = None
+    score: Optional[int] = None
+    permalink: Optional[str] = None
+    author: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

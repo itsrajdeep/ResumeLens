@@ -1,8 +1,14 @@
-# Environment
+# ── Environment & Secrets ──────────────────────────────────────
 .env
+.env.*
+!.env.example
 *.env.local
+*.pem
+*.key
+secrets/
+credentials/
 
-# Python
+# ── Python ─────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,42 +19,52 @@ build/
 .eggs/
 *.egg
 
-# Virtual environments
+# ── Virtual Environments ───────────────────────────────────────
 venv/
 .venv/
 env/
+ENV/
 
-# IDE
+# ── Storage (scraped files & resume images) ────────────────────
+storage/
+backend/storage/
+
+# ── Test / scratch scripts ──────────────────────────────────────
+test_scraper.py
+scratch/
+*.test.py
+
+# ── Alembic ─────────────────────────────────────────────────────
+alembic/versions/__pycache__/
+
+# ── Node / Next.js ──────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+.next/
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ── Docker ──────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── IDE ─────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Storage
-storage/raw/
-storage/anonymous/
-
-# Alembic
-alembic/versions/__pycache__/
-
-# Node
-node_modules/
-frontend/node_modules/
-frontend/dist/
-
-# Docker
-docker-compose.override.yml
-
-# OS
+# ── OS ──────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Logs
+# ── Logs ────────────────────────────────────────────────────────
 *.log
 logs/
 
-# Test
+# ── Test & Coverage ──────────────────────────────────────────────
 .pytest_cache/
 .coverage
 htmlcov/

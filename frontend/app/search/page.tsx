@@ -1,102 +1,150 @@
-"use client";
-import { useState } from "react";
+﻿"use client";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
-const categories = [
+const BACKEND = "http://localhost:8000";
+
+const CATEGORY_FILTERS = [
+  { icon: "apps", label: "All" },
   { icon: "code", label: "Frontend" },
   { icon: "database", label: "Backend" },
   { icon: "layers", label: "Fullstack" },
   { icon: "terminal", label: "DevOps" },
   { icon: "psychology", label: "ML / AI" },
   { icon: "cloud", label: "Cloud" },
+  { icon: "engineering", label: "Mechanical" },
+  { icon: "science", label: "Chemical" },
+  { icon: "flight", label: "Aerospace" },
 ];
 
-const mockResumes = [
-  {
-    id: "1",
-    code: "ID-FEND-892",
-    role: "Backend Engineer",
+interface Resume {
+  id: number;
+  post_id: number;
+  category: string | null;
+  summary: string | null;
+  anonymous_file_path: string | null;
+  embedding_id: string | null;
+  created_at: string;
+  updated_at: string;
+  title: string | null;
+  file_url: string | null;
+  file_type: string | null;
+  subreddit: string | null;
+  score: number | null;
+  permalink: string | null;
+  author: string | null;
+}
 
-    skills: ["Java", "Spring Boot", "AWS", "PostgreSQL"],
-    project: ["> Architected microservices", "> 40% reduction in latency", "> 1M+ daily active users"],
-  },
-  {
-    id: "2",
-    code: "ID-DATA-401",
-    role: "Data Scientist",
+function YoEBadge({ title }: { title: string | null }) {
+  if (!title) return null;
+  const studentMatch = title.match(/\[Student\]/i);
+  const yoeMatch = title.match(/\[(\d+)\+?\s*YoE\]/i);
+  if (!studentMatch && !yoeMatch) return null;
+  const label = studentMatch ? "Student" : `${yoeMatch![1]} YoE`;
+  return (
+    <span
+      className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+      style={{ background: "rgba(192,193,255,0.15)", color: "var(--color-primary)", border: "1px solid rgba(192,193,255,0.25)" }}
+    >
+      {label}
+    </span>
+  );
+}
 
-    skills: ["Python", "TensorFlow", "SQL", "Spark"],
-    project: ["> Built predictive NLP models", "> 15% increase in retention", "> Deployed via Docker/K8s"],
-  },
-  {
-    id: "3",
-    code: "ID-UIUX-112",
-    role: "Frontend Engineer",
+function ScoreBadge({ score }: { score: number | null }) {
+  if (score === null) return null;
+  return (
+    <span className="flex items-center gap-1 text-[11px] text-white/70 bg-black/30 px-2 py-0.5 rounded-full">
+      <span className="material-symbols-outlined text-[13px] text-[var(--color-secondary)]">arrow_upward</span>
+      {score}
+    </span>
+  );
+}
 
-    skills: ["React", "TypeScript", "Tailwind", "Next.js"],
-    project: ["> Migrated legacy SPA to Next", "> 90+ Lighthouse score", "> Implemented Design System"],
-  },
-  {
-    id: "4",
-    code: "ID-DEVOPS-228",
-    role: "DevOps Engineer",
-
-    skills: ["Kubernetes", "Terraform", "AWS", "CI/CD"],
-    project: ["> Zero-downtime deployments", "> Reduced infra cost 35%", "> Multi-region k8s clusters"],
-  },
-  {
-    id: "5",
-    code: "ID-MLAI-055",
-    role: "ML Engineer",
-
-    skills: ["Python", "PyTorch", "MLflow", "CUDA"],
-    project: ["> LLM fine-tuning pipeline", "> Reduced inference latency", "> Open-source NLP toolkit"],
-  },
-  {
-    id: "6",
-    code: "ID-FULL-334",
-    role: "Fullstack Developer",
-
-    skills: ["Go", "React", "PostgreSQL", "Docker"],
-    project: ["> Greenfield SaaS platform", "> Built API from scratch", "> 5k+ daily active users"],
-  },
-];
+function SkeletonCard() {
+  return (
+    <div className="glass-panel rounded-xl overflow-hidden animate-pulse" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="w-full h-48 bg-white/5" />
+      <div className="p-5 flex flex-col gap-3">
+        <div className="flex gap-2"><div className="h-4 w-16 rounded-full bg-white/10" /><div className="h-4 w-12 rounded-full bg-white/5" /></div>
+        <div className="h-3 w-full rounded bg-white/10" />
+        <div className="h-3 w-4/5 rounded bg-white/5" />
+        <div className="h-3 w-2/3 rounded bg-white/5" />
+        <div className="h-8 w-full rounded bg-white/5 mt-2" />
+      </div>
+    </div>
+  );
+}
 
 export default function SearchPage() {
-  const [activeCategory, setActiveCategory] = useState("Backend");
+  const [activeCategory, setActiveCategory] = useState("All");
   const [query, setQuery] = useState("");
+  const [resumes, setResumes] = useState<Resume[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 18;
 
-  const filtered = mockResumes.filter((r) => {
-    const q = query.toLowerCase();
-    return (
-      r.role.toLowerCase().includes(q) ||
-      r.skills.some((s) => s.toLowerCase().includes(q))
-    );
-  });
+  const fetchResumes = useCallback(async (pg: number, cat: string, reset: boolean) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ page: String(pg), page_size: String(PAGE_SIZE) });
+      if (cat !== "All") params.set("category", cat);
+      const res = await fetch(`${BACKEND}/api/resumes?${params}`);
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data: Resume[] = await res.json();
+      setResumes((prev) => (reset ? data : [...prev, ...data]));
+      setHasMore(data.length === PAGE_SIZE);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+    setResumes([]);
+    fetchResumes(1, activeCategory, true);
+  }, [activeCategory, fetchResumes]);
+
+  useEffect(() => {
+    if (page === 1) return;
+    fetchResumes(page, activeCategory, false);
+  }, [page, activeCategory, fetchResumes]);
+
+  const filtered = query.trim()
+    ? resumes.filter((r) => {
+        const q = query.toLowerCase();
+        return (
+          r.title?.toLowerCase().includes(q) ||
+          r.author?.toLowerCase().includes(q) ||
+          r.category?.toLowerCase().includes(q)
+        );
+      })
+    : resumes;
 
   return (
     <div className="flex pt-16 min-h-screen">
       {/* Sidebar */}
       <aside
         className="hidden md:flex fixed left-0 top-16 h-[calc(100vh-64px)] w-[240px] flex-col p-4 z-40"
-        style={{
-          background: "rgba(27,31,44,0.75)",
-          backdropFilter: "blur(16px)",
-          borderRight: "1px solid rgba(255,255,255,0.07)",
-        }}
+        style={{ background: "rgba(27,31,44,0.75)", backdropFilter: "blur(16px)", borderRight: "1px solid rgba(255,255,255,0.07)" }}
       >
         <div className="mb-4">
           <h2 className="text-lg font-bold text-[var(--color-primary)]">Filters</h2>
-          <p className="text-xs text-[var(--color-on-surface-variant)] mt-0.5">Refine search</p>
+          <p className="text-xs text-[var(--color-on-surface-variant)] mt-0.5">Browse by category</p>
         </div>
-
         <nav className="flex-1 flex flex-col gap-1 overflow-y-auto">
-          {categories.map((cat) => {
+          {CATEGORY_FILTERS.map((cat) => {
             const isActive = cat.label === activeCategory;
             return (
               <button
                 key={cat.label}
-                id={`filter-${cat.label.toLowerCase()}`}
+                id={`filter-${cat.label.toLowerCase().replace(/\s+/g, "-")}`}
                 onClick={() => setActiveCategory(cat.label)}
                 className="flex items-center gap-3 px-3 py-2 rounded text-left transition-all duration-200"
                 style={{
@@ -112,26 +160,20 @@ export default function SearchPage() {
             );
           })}
         </nav>
-
-        <div className="mt-auto flex flex-col gap-3">
-          <button className="btn-primary w-full py-2 rounded text-xs font-semibold uppercase tracking-wider">
-            Save Search
-          </button>
-          <div className="border-t border-white/5 pt-3 flex flex-col gap-1">
-            {[{ icon: "menu_book", label: "Documentation" }, { icon: "contact_support", label: "Support" }].map((item) => (
-              <a key={item.label} href="#" className="flex items-center gap-3 px-3 py-2 rounded text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)] hover:bg-white/5 transition-all">
-                <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                <span className="text-xs font-semibold uppercase tracking-wider">{item.label}</span>
-              </a>
-            ))}
-          </div>
+        <div className="mt-auto border-t border-white/5 pt-3 flex flex-col gap-1">
+          {[{ icon: "menu_book", label: "Documentation" }, { icon: "contact_support", label: "Support" }].map((item) => (
+            <a key={item.label} href="#" className="flex items-center gap-3 px-3 py-2 rounded text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)] hover:bg-white/5 transition-all">
+              <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">{item.label}</span>
+            </a>
+          ))}
         </div>
       </aside>
 
       {/* Main */}
       <main className="flex-1 md:ml-[240px] px-6 pb-16 max-w-7xl mx-auto w-full">
-        {/* Sticky Search */}
-        <div className="sticky top-20 z-30 py-4" style={{ background: "rgba(15,19,31,0.8)", backdropFilter: "blur(8px)" }}>
+        {/* Sticky Search Bar */}
+        <div className="sticky top-16 z-30 py-4" style={{ background: "rgba(15,19,31,0.88)", backdropFilter: "blur(8px)" }}>
           <div className="relative w-full max-w-3xl mx-auto">
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-on-surface-variant)]">search</span>
             <input
@@ -140,15 +182,21 @@ export default function SearchPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="search-input w-full h-[52px] pl-12 pr-4 rounded-xl text-[var(--color-on-surface)] placeholder:text-[var(--color-on-surface-variant)]/50 text-[15px]"
-              placeholder="Search resumes by skill, role... [Ctrl + K]"
+              placeholder="Search by title, author, category..."
             />
           </div>
         </div>
 
-        {/* Results Count */}
+        {/* Result count row */}
         <div className="flex items-center justify-between mb-6 mt-2">
           <p className="text-sm text-[var(--color-on-surface-variant)]">
-            Showing <span className="text-[var(--color-primary)] font-semibold">{filtered.length}</span> resumes
+            {loading && resumes.length === 0 ? "Loading resumes..." : error ? (
+              <span className="text-red-400">{error}</span>
+            ) : (
+              <>Showing <span className="text-[var(--color-primary)] font-semibold">{filtered.length}</span> resumes
+                {query && <span className="ml-1 text-[var(--color-outline)]">for &ldquo;{query}&rdquo;</span>}
+              </>
+            )}
           </p>
           <span className="text-xs text-[var(--color-outline)] uppercase tracking-wider font-semibold">{activeCategory}</span>
         </div>
@@ -156,60 +204,128 @@ export default function SearchPage() {
         {/* Cards Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered.map((resume) => (
-            <article key={resume.id} className="glass-panel rounded-xl p-6 flex flex-col gap-4">
-              {/* Header */}
-              <header className="flex justify-between items-start border-b border-white/5 pb-4">
-                <div>
-                  <h3 className="font-mono text-[13px] text-[var(--color-on-surface-variant)]">{resume.code}</h3>
-                  <div className="mt-2 inline-block px-3 py-1 rounded-full" style={{ background: "var(--color-surface-container-high)", border: "1px solid rgba(70,69,84,0.4)" }}>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[var(--color-secondary)]">{resume.role}</span>
+            <article
+              key={resume.id}
+              className="glass-panel rounded-xl overflow-hidden flex flex-col group transition-all duration-300"
+              style={{ border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              {/* Thumbnail */}
+              <div className="relative w-full h-48 bg-[var(--color-surface-container)] overflow-hidden">
+                {resume.file_url ? (
+                  <Image
+                    src={resume.file_url}
+                    alt={resume.title || "Resume"}
+                    fill
+                    className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full w-full">
+                    <span className="material-symbols-outlined text-6xl text-white/10">description</span>
                   </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[var(--color-surface)]/70 via-transparent to-transparent" />
+                <div className="absolute top-3 right-3">
+                  <ScoreBadge score={resume.score} />
                 </div>
+              </div>
 
-              </header>
-
-              {/* Skills */}
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-on-surface-variant)] mb-2">Core Skills</p>
-                <div className="flex flex-wrap gap-2">
-                  {resume.skills.map((s) => (
-                    <span key={s} className="px-2 py-1 rounded text-xs font-medium text-[var(--color-on-surface)]" style={{ background: "var(--color-surface-container)" }}>
-                      {s}
+              {/* Body */}
+              <div className="p-5 flex flex-col gap-3 flex-1">
+                {/* Badges row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <YoEBadge title={resume.title} />
+                  {resume.category && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{ background: "rgba(76,215,246,0.12)", color: "var(--color-secondary)", border: "1px solid rgba(76,215,246,0.2)" }}>
+                      {resume.category}
                     </span>
-                  ))}
+                  )}
                 </div>
-              </div>
 
-              {/* Project Snippet */}
-              <div className="flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-on-surface-variant)] mb-2">Recent Project</p>
-                <div className="code-block text-[var(--color-on-surface-variant)]">
-                  {resume.project.map((line, i) => (
-                    <div key={i}>{line}</div>
-                  ))}
+                {/* Title */}
+                <h3 className="text-sm font-semibold text-[var(--color-on-surface)] leading-snug line-clamp-2">
+                  {resume.title || "Untitled Resume"}
+                </h3>
+
+                {/* Meta */}
+                <div className="flex items-center gap-2 text-[11px] text-[var(--color-on-surface-variant)]">
+                  <span className="material-symbols-outlined text-[13px]">person</span>
+                  <span className="font-mono truncate max-w-[120px]">{resume.author || "anonymous"}</span>
+                  {resume.subreddit && (
+                    <>
+                      <span className="opacity-30">·</span>
+                      <span className="opacity-60">r/{resume.subreddit}</span>
+                    </>
+                  )}
                 </div>
-              </div>
 
-              {/* Footer */}
-              <footer className="pt-4 border-t border-white/5">
-                <Link
-                  href={`/resume/${resume.id}`}
-                  id={`view-resume-${resume.id}`}
-                  className="btn-ghost w-full py-2 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-[18px]">visibility</span>
-                  Open Resume
-                </Link>
-              </footer>
+                {resume.summary && (
+                  <p className="text-[12px] text-[var(--color-on-surface-variant)] leading-relaxed line-clamp-2">{resume.summary}</p>
+                )}
+
+                {/* Footer */}
+                <footer className="mt-auto pt-3 border-t border-white/5 flex items-center gap-2">
+                  <Link
+                    href={`/resume/${resume.id}`}
+                    id={`view-resume-${resume.id}`}
+                    className="btn-ghost flex-1 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">visibility</span>
+                    View Resume
+                  </Link>
+                  {resume.permalink && (
+                    <a
+                      href={`https://reddit.com${resume.permalink}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="View on Reddit"
+                      className="p-2 rounded-lg text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)] hover:bg-white/5 transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                    </a>
+                  )}
+                </footer>
+              </div>
             </article>
           ))}
+
+          {/* Skeleton loading cards */}
+          {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`sk-${i}`} />)}
         </div>
 
-        {filtered.length === 0 && (
+        {/* Empty state */}
+        {!loading && filtered.length === 0 && !error && (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <span className="material-symbols-outlined text-7xl text-[var(--color-surface-variant)]">search_off</span>
-            <h3 className="text-lg font-semibold text-[var(--color-on-surface)]">No results found</h3>
-            <p className="text-sm text-[var(--color-on-surface-variant)]">Try a different skill or keyword</p>
+            <h3 className="text-lg font-semibold text-[var(--color-on-surface)]">No resumes found</h3>
+            <p className="text-sm text-[var(--color-on-surface-variant)]">Try a different keyword or category filter</p>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <span className="material-symbols-outlined text-7xl text-red-400/50">error_outline</span>
+            <h3 className="text-lg font-semibold text-[var(--color-on-surface)]">Could not connect to backend</h3>
+            <p className="text-sm text-red-400">{error}</p>
+            <button onClick={() => fetchResumes(1, activeCategory, true)} className="btn-primary px-6 py-2 rounded-lg text-sm mt-2">
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Load More */}
+        {!loading && hasMore && filtered.length > 0 && !query && (
+          <div className="flex justify-center mt-10">
+            <button
+              id="load-more-btn"
+              onClick={() => setPage((p) => p + 1)}
+              className="btn-ghost px-8 py-3 rounded-xl text-sm font-semibold uppercase tracking-wider flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[18px]">expand_more</span>
+              Load More
+            </button>
           </div>
         )}
       </main>
