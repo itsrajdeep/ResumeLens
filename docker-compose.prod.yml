@@ -1,0 +1,40 @@
+# docker-compose.prod.yml
+# Production overrides for Oracle Cloud deployment.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: "3.9"
+
+services:
+  # ── Disable --reload in production ──────────────────────────
+  backend:
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    volumes:
+      - ./storage:/app/storage   # only mount storage, not source code
+
+  postgres:
+    restart: always
+
+  qdrant:
+    restart: always
+    # Do NOT expose Qdrant publicly in production
+    ports: []
+
+  redis:
+    restart: always
+    # Do NOT expose Redis publicly in production
+    ports: []
+
+  # ── Next.js Frontend ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: resumeatlas-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
