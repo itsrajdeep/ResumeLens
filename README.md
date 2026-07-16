@@ -251,12 +251,5 @@ Contributions are welcome! Please open an issue first to discuss what you'd like
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
 
 <p align="center">Built with ❤️ using FastAPI, Gemini AI, Next.js, and React</p>
