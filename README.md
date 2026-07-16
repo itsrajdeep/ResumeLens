@@ -12,9 +12,11 @@ ResumeAtlas is an open-source platform that crawls resume-sharing communities on
 - 🤖 **AI-Powered Processing** — Gemini 2.5 Flash parses, summarizes, and categorizes every resume
 - 🔒 **Anonymization** — PII is stripped before any resume is stored or displayed
 - 🧠 **Vector Search** — Semantic similarity via Qdrant embeddings
+- 🔎 **Keyword Search** — Full-text keyword search across all resume content
 - 📊 **Skill Analytics** — Track trending technologies, top skills by category, and more
 - 🗂️ **Category Browsing** — Filter resumes by role: Frontend, Backend, AI/ML, DevOps, etc.
 - ⚡ **Real-time Stats** — Live category and skill distribution charts
+- 💾 **Save Resumes** — Bookmark interesting resumes to review later
 
 ---
 
@@ -22,7 +24,7 @@ ResumeAtlas is an open-source platform that crawls resume-sharing communities on
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | React + Vite, Vanilla CSS |
+| **Frontend** | Next.js 16, React 19, TypeScript, TailwindCSS 4 |
 | **Backend** | FastAPI (Python 3.11) |
 | **Database** | PostgreSQL 16 |
 | **Vector DB** | Qdrant |
@@ -43,8 +45,8 @@ ResumeAtlas is an open-source platform that crawls resume-sharing communities on
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/resume-atlas.git
-cd resume-atlas
+git clone https://github.com/itsrajdeep/ResumeLens.git
+cd ResumeLens
 ```
 
 ### 2. Configure environment
@@ -73,6 +75,7 @@ This starts:
 - **Qdrant** on ports `6333` / `6334`
 - **Redis** on port `6379`
 - **FastAPI backend** on port `8000`
+- **Next.js frontend** on port `3000`
 
 ### 4. Trigger the first crawl
 
@@ -80,7 +83,7 @@ This starts:
 curl -X POST http://localhost:8000/api/crawl/trigger
 ```
 
-Or open the UI at `http://localhost:5173` and click **"Start Crawl"** from the dashboard.
+Or open the UI at `http://localhost:3000` and click **"Start Crawl"** from the dashboard.
 
 ---
 
@@ -93,12 +96,26 @@ resume-atlas/
 │   │   ├── api/
 │   │   │   └── routes/
 │   │   │       ├── crawl.py       # Crawl trigger & status endpoints
-│   │   │       └── resumes.py     # Resume list, detail & stats endpoints
+│   │   │       ├── resumes.py     # Resume list, detail & stats endpoints
+│   │   │       ├── search.py      # Keyword & semantic search endpoints
+│   │   │       ├── pipeline.py    # Manual pipeline trigger endpoints
+│   │   │       └── files.py       # Resume file serving endpoints
 │   │   ├── crawler/
 │   │   │   ├── reddit_client.py   # Reddit JSON API pagination
 │   │   │   ├── post_filter.py     # Resume post detection & parsing
 │   │   │   ├── downloader.py      # PDF/image download with dedup
 │   │   │   └── sync.py            # Incremental subreddit sync engine
+│   │   ├── pipeline/
+│   │   │   ├── pipeline.py        # End-to-end processing orchestrator
+│   │   │   ├── text_extractor.py  # PDF & image text extraction
+│   │   │   ├── ocr.py             # OCR for image-based resumes
+│   │   │   ├── parser.py          # AI resume parsing (Gemini)
+│   │   │   ├── pii_remover.py     # PII detection & removal
+│   │   │   ├── metadata.py        # Metadata extraction & enrichment
+│   │   │   └── embedder.py        # Text embedding generation
+│   │   ├── search/
+│   │   │   ├── keyword.py         # Full-text keyword search
+│   │   │   └── semantic.py        # Vector similarity search
 │   │   ├── models/
 │   │   │   ├── post.py            # Reddit post DB model
 │   │   │   ├── resume.py          # Processed resume DB model
@@ -108,11 +125,21 @@ resume-atlas/
 │   │   ├── schemas/               # Pydantic response schemas
 │   │   ├── config.py              # Settings (loaded from .env)
 │   │   ├── database.py            # SQLAlchemy engine & session
+│   │   ├── vector_store.py        # Qdrant client & collection setup
 │   │   └── main.py                # FastAPI app entry point
 │   ├── alembic/                   # Database migrations
 │   ├── Dockerfile
 │   └── requirements.txt
-├── frontend/                      # React + Vite app
+├── frontend/                      # Next.js 16 + React 19 + TypeScript app
+│   ├── app/
+│   │   ├── page.tsx               # Home dashboard
+│   │   ├── layout.tsx             # Root layout
+│   │   ├── globals.css            # Global styles
+│   │   ├── resume/                # Resume detail page
+│   │   ├── search/                # Search page
+│   │   └── saved/                 # Saved resumes page
+│   └── components/
+│       └── Navbar.tsx             # Navigation bar
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -140,6 +167,10 @@ The API is self-documented. With the backend running, visit:
 | `GET` | `/api/resumes/{id}` | Get a single resume detail |
 | `GET` | `/api/resumes/stats/categories` | Resume counts per category |
 | `GET` | `/api/resumes/stats/skills` | Top skills by usage |
+| `GET` | `/api/search/keyword` | Keyword search across resumes |
+| `GET` | `/api/search/semantic` | Semantic similarity search |
+| `GET` | `/api/files/{id}` | Serve resume file |
+| `POST` | `/api/pipeline/run` | Manually trigger processing pipeline |
 
 ---
 
@@ -171,6 +202,16 @@ pip install -r requirements.txt
 # Make sure Postgres, Qdrant & Redis are running, then:
 uvicorn app.main:app --reload --port 8000
 ```
+
+### Running frontend locally (without Docker)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend dev server will start at `http://localhost:3000`.
 
 ### Running database migrations
 
@@ -218,4 +259,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-<p align="center">Built with ❤️ using FastAPI, Gemini AI, and React</p>
+<p align="center">Built with ❤️ using FastAPI, Gemini AI, Next.js, and React</p>
