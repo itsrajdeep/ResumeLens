@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 
-const BACKEND = "http://localhost:8000";
+import BACKEND from "@/lib/api";
+
 
 interface Resume {
   id: number;

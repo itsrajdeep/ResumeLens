@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 
-const BACKEND = "http://localhost:8000";
+import BACKEND from "@/lib/api";
+
 
 const CATEGORY_FILTERS = [
   { icon: "apps", label: "All" },
