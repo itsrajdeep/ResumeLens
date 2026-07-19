@@ -121,7 +121,7 @@ export default function SavedPage() {
                       href={`/resume/${card.id}`}
                       id={`saved-card-${card.id}`}
                       className="glass-panel rounded-xl p-6 flex flex-col gap-4 cursor-pointer group"
-                      style={card.borderAccent ? { borderLeft: "4px solid var(--color-secondary)" } : {}}
+                      style={'borderAccent' in card && card.borderAccent ? { borderLeft: "4px solid var(--color-secondary)" } : {}}
                     >
                       {/* Card Header */}
                       <div className="flex justify-between items-start">
