@@ -70,7 +70,7 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
 
             if data["file_url"] and data["file_type"]:
                 try:
-                    file_path, file_hash, is_new = download_resume(
+                    file_path, file_hash, is_new, supabase_url = download_resume(
                         data["file_url"], subreddit, data["file_type"], db
                     )
                     if is_new:
@@ -78,6 +78,7 @@ def sync_subreddit(db: Session, subreddit: str, limit: int = 100) -> dict:
                             post_id=db_post.id,
                             raw_file_path=file_path,
                             file_hash=file_hash,
+                            supabase_url=supabase_url,   # permanent cloud URL
                         )
                         db.add(new_resume)
                         db.flush()

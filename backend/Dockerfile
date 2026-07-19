@@ -23,6 +23,8 @@ COPY . .
 # Create storage directories
 RUN mkdir -p /app/storage/raw /app/storage/anonymous
 
+# HuggingFace Spaces requires port 7860
+# Render / standard Docker: use 8000
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

@@ -17,6 +17,7 @@ class Resume(Base):
     post_id = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     raw_file_path = Column(Text, nullable=False)
     anonymous_file_path = Column(Text)
+    supabase_url = Column(Text)          # Permanent public URL on Supabase Storage
     ocr_text = Column(Text)
     parsed_data = Column(JSONB)  # Structured resume data from Gemini
     summary = Column(Text)

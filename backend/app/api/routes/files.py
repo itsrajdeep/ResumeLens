@@ -3,13 +3,13 @@ File Serving Routes
 Serves anonymized resume files and anonymous text.
 
 GET /api/files/{resume_id}/text     ← Returns anonymized text content
-GET /api/files/{resume_id}/download ← Streams the anonymized file
+GET /api/files/{resume_id}/download ← Redirects to Supabase CDN (prod) or streams from disk (local)
 """
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
@@ -47,13 +47,19 @@ def get_resume_text(resume_id: int, db: Session = Depends(get_db)):
 @router.get("/{resume_id}/download")
 def download_resume_file(resume_id: int, db: Session = Depends(get_db)):
     """
-    Stream the anonymized resume text file as a download.
-    Only serves the anonymized (.txt) version — never the raw file.
+    Serve the resume file.
+    - Production: redirect to permanent Supabase Storage public URL.
+    - Local dev:  stream the anonymized .txt file from disk.
     """
     resume = db.get(Resume, resume_id)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    # ── Production: redirect to Supabase CDN (permanent, survives restarts) ──
+    if resume.supabase_url:
+        return RedirectResponse(url=resume.supabase_url, status_code=302)
+
+    # ── Local dev fallback: serve anonymized text from disk ───────────────────
     if not resume.anonymous_file_path:
         raise HTTPException(
             status_code=404,

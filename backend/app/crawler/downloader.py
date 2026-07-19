@@ -6,6 +6,7 @@ Flow:
   2. Stream download to a temp file.
   3. SHA256 the content; if hash exists in DB, skip storage.
   4. Move file to storage/raw/<subreddit>/<hash>.<ext>.
+  5. Upload to Supabase Storage (production) and store public URL.
 """
 import hashlib
 import logging
@@ -43,13 +44,16 @@ def download_resume(
     subreddit: str,
     file_type: str,
     db: Session,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, str | None]:
     """
-    Download a resume file and persist it to disk.
+    Download a resume file, persist to disk, and upload to Supabase Storage.
 
     Returns:
-        (file_path, file_hash, is_new): absolute path on disk, SHA256 hash, and
-        whether this was a new file (False means duplicate, existing path returned).
+        (file_path, file_hash, is_new, supabase_url):
+            - file_path:    Absolute local path on disk.
+            - file_hash:    SHA256 hex digest.
+            - is_new:       False means duplicate (existing record returned).
+            - supabase_url: Public Supabase URL, or None if not configured / duplicate.
 
     Raises:
         ValueError: if the file is too large or content-type is unexpected.
@@ -80,9 +84,20 @@ def download_resume(
     if existing:
         tmp_path.unlink(missing_ok=True)
         logger.debug("Duplicate file skipped (hash=%s)", file_hash[:12])
-        return existing.raw_file_path, file_hash, False
+        return existing.raw_file_path, file_hash, False, existing.supabase_url
 
     dest = raw_root / f"{file_hash}.{file_type}"
     shutil.move(str(tmp_path), dest)
     logger.info("Downloaded %s → %s", url, dest)
-    return str(dest), file_hash, True
+
+    # Upload to Supabase Storage if configured (production)
+    supabase_url = None
+    try:
+        from app.storage import upload_file, is_configured
+        if is_configured():
+            storage_key = f"{subreddit}/{file_hash}.{file_type}"
+            supabase_url = upload_file(str(dest), storage_key)
+    except Exception as exc:
+        logger.warning("Supabase upload failed (will use local path): %s", exc)
+
+    return str(dest), file_hash, True, supabase_url
