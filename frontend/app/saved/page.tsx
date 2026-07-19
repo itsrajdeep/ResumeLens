@@ -165,10 +165,10 @@ export default function SavedPage() {
                       </div>
 
                       {/* Bio or Interview Note */}
-                      {card.bio && (
+                      {'bio' in card && card.bio && (
                         <p className="text-sm text-[var(--color-on-surface-variant)] line-clamp-2 leading-relaxed">{card.bio}</p>
                       )}
-                      {card.interviewNote && (
+                      {'interviewNote' in card && card.interviewNote && (
                         <div
                           className="mt-2 p-3 rounded-lg flex items-center gap-2 text-sm"
                           style={{ background: "#000", border: "1px solid rgba(70,69,84,0.3)", color: "var(--color-secondary)" }}
