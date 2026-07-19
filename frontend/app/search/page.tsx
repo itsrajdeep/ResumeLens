@@ -94,7 +94,7 @@ export default function SearchPage() {
     try {
       const params = new URLSearchParams({ page: String(pg), page_size: String(PAGE_SIZE) });
       if (cat !== "All") params.set("category", cat);
-      const res = await fetch(`${BACKEND}/api/resumes?${params}`);
+      const res = await fetch(`${BACKEND}/api/resumes/?${params}`);
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data: Resume[] = await res.json();
       setResumes((prev) => (reset ? data : [...prev, ...data]));
